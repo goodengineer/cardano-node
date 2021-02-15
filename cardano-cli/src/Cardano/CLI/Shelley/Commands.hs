@@ -16,6 +16,9 @@ module Cardano.CLI.Shelley.Commands
   , GenesisCmd (..)
   , TextViewCmd (..)
   , renderShelleyCommand
+  -- ** Pivo subcommands
+  , PivoCmd (..)
+  , SIPCmd (..)
 
     -- * CLI flag types
   , AddressKeyType (..)
@@ -314,6 +317,14 @@ data GovernanceCmd
   | GovernanceUpdateProposal OutputFile EpochNo
                              [VerificationKeyFile]
                              ProtocolParametersUpdate
+  | PivoCmd PivoCmd OutputFile
+  deriving Show
+
+data PivoCmd
+  = SIP SIPCmd
+  deriving Show
+
+data SIPCmd = SIPNew
   deriving Show
 
 renderGovernanceCmd :: GovernanceCmd -> Text
@@ -322,6 +333,7 @@ renderGovernanceCmd cmd =
     GovernanceGenesisKeyDelegationCertificate {} -> "governance create-genesis-key-delegation-certificate"
     GovernanceMIRCertificate {} -> "governance create-mir-certificate"
     GovernanceUpdateProposal {} -> "governance create-update-proposal"
+    PivoCmd {} -> "governance pivo"
 
 data TextViewCmd
   = TextViewInfo !FilePath (Maybe OutputFile)
