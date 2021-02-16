@@ -577,7 +577,7 @@ mkConsensusTracers mbEKGDirect trSel verb tr nodeKern fStats = do
    traceServedCount (Just ekgDirect) tHeadersServed ev =
      when (isRollForward ev) $ do
        count <- STM.modifyReadTVarIO tHeadersServed (+1)
-       sendEKGDirectInt ekgDirect "cardano.node.metrics.served.header.counter" count
+       sendEKGDirectInt ekgDirect "cardano.node.metrics.served.header.counter.int" count
 
 traceLeadershipChecks ::
   forall blk
