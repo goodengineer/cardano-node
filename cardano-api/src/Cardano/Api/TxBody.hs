@@ -20,6 +20,7 @@ module Cardano.Api.TxBody (
     -- * Transaction bodies
     TxBody(..),
     makeTransactionBody,
+    makePivoTransactionBody,
     TxBodyContent(..),
     TxBodyError(..),
 
@@ -128,7 +129,7 @@ import qualified Cardano.Ledger.Era as Ledger
 import qualified Cardano.Ledger.Shelley.Constraints as Ledger
 import qualified Cardano.Ledger.ShelleyMA.AuxiliaryData as Allegra
 import qualified Cardano.Ledger.ShelleyMA.TxBody as Allegra
-import           Ouroboros.Consensus.Shelley.Eras (StandardAllegra, StandardMary, StandardShelley)
+import           Ouroboros.Consensus.Shelley.Eras (StandardAllegra, StandardMary, StandardShelley, PivoEra)
 import           Ouroboros.Consensus.Shelley.Protocol.Crypto (StandardCrypto)
 
 import qualified Shelley.Spec.Ledger.Address as Shelley
@@ -141,9 +142,12 @@ import qualified Shelley.Spec.Ledger.Tx as Shelley
 import qualified Shelley.Spec.Ledger.TxBody as Shelley
 import qualified Shelley.Spec.Ledger.UTxO as Shelley
 
+import qualified Cardano.Ledger.Pivo.Update as Pivo.Update
+
 import           Cardano.Api.Address
 import           Cardano.Api.Certificate
-import           Cardano.Api.Eras
+import           Cardano.Api.Eras hiding (PivoEra)
+import qualified Cardano.Api.Eras
 import           Cardano.Api.Error
 import           Cardano.Api.Hash
 import           Cardano.Api.HasTypeProxy
@@ -158,7 +162,6 @@ import           Cardano.Api.SerialiseTextEnvelope
 import           Cardano.Api.TxMetadata
 import           Cardano.Api.Utils
 import           Cardano.Api.Value
-
 
 -- ----------------------------------------------------------------------------
 -- Transaction Ids
@@ -208,6 +211,7 @@ getTxId (ShelleyTxBody era tx _) =
       ShelleyBasedEraShelley -> getTxIdShelley tx
       ShelleyBasedEraAllegra -> getTxIdShelley tx
       ShelleyBasedEraMary    -> getTxIdShelley tx
+      ShelleyBasedEraPivo    -> getTxIdShelley tx
   where
     getTxIdShelley :: Ledger.Crypto ledgerera ~ StandardCrypto
                    => Ledger.UsesTxBody ledgerera
@@ -289,6 +293,9 @@ toShelleyTxOut (TxOut addr (TxOutAdaOnly AdaOnlyInAllegraEra value)) =
 toShelleyTxOut (TxOut addr (TxOutValue MultiAssetInMaryEra value)) =
     Shelley.TxOut (toShelleyAddr addr) (toMaryValue value)
 
+toShelleyTxOut (TxOut addr (TxOutValue MultiAssetInPivoEra value)) =
+    Shelley.TxOut (toShelleyAddr addr) (toMaryValue value)
+
 fromShelleyTxOut :: Shelley.TxOut StandardShelley -> TxOut ShelleyEra
 fromShelleyTxOut = fromTxOut ShelleyBasedEraShelley
 
@@ -311,6 +318,10 @@ fromTxOut shelleyBasedEra' ledgerTxOut =
                               in TxOut (fromShelleyAddr addr)
                                         (TxOutValue MultiAssetInMaryEra
                                                       (fromMaryValue value))
+    ShelleyBasedEraPivo    -> let (Shelley.TxOut addr value) = ledgerTxOut
+                              in TxOut (fromShelleyAddr addr)
+                                        (TxOutValue MultiAssetInPivoEra
+                                                      (fromMaryValue value))
 
 -- ----------------------------------------------------------------------------
 -- Era-dependent transaction body features
@@ -326,6 +337,9 @@ data MultiAssetSupportedInEra era where
 
      -- | Multi-asset transactions are supported in the 'Mary' era.
      MultiAssetInMaryEra :: MultiAssetSupportedInEra MaryEra
+
+     MultiAssetInPivoEra :: MultiAssetSupportedInEra Cardano.Api.Eras.PivoEra
+
 
 deriving instance Eq   (MultiAssetSupportedInEra era)
 deriving instance Show (MultiAssetSupportedInEra era)
@@ -354,6 +368,7 @@ multiAssetSupportedInEra ByronEra   = Left AdaOnlyInByronEra
 multiAssetSupportedInEra ShelleyEra = Left AdaOnlyInShelleyEra
 multiAssetSupportedInEra AllegraEra = Left AdaOnlyInAllegraEra
 multiAssetSupportedInEra MaryEra    = Right MultiAssetInMaryEra
+multiAssetSupportedInEra Cardano.Api.Eras.PivoEra = Right MultiAssetInPivoEra
 
 
 -- | A representation of whether the era requires explicitly specified fees in
@@ -368,6 +383,7 @@ data TxFeesExplicitInEra era where
      TxFeesExplicitInShelleyEra :: TxFeesExplicitInEra ShelleyEra
      TxFeesExplicitInAllegraEra :: TxFeesExplicitInEra AllegraEra
      TxFeesExplicitInMaryEra    :: TxFeesExplicitInEra MaryEra
+     TxFeesExplicitInPivoEra    :: TxFeesExplicitInEra Cardano.Api.Eras.PivoEra
 
 deriving instance Eq   (TxFeesExplicitInEra era)
 deriving instance Show (TxFeesExplicitInEra era)
@@ -390,6 +406,7 @@ txFeesExplicitInEra ByronEra   = Left  TxFeesImplicitInByronEra
 txFeesExplicitInEra ShelleyEra = Right TxFeesExplicitInShelleyEra
 txFeesExplicitInEra AllegraEra = Right TxFeesExplicitInAllegraEra
 txFeesExplicitInEra MaryEra    = Right TxFeesExplicitInMaryEra
+txFeesExplicitInEra Cardano.Api.Eras.PivoEra = Right TxFeesExplicitInPivoEra
 
 
 -- | A representation of whether the era supports transactions with an upper
@@ -404,6 +421,7 @@ data ValidityUpperBoundSupportedInEra era where
      ValidityUpperBoundInShelleyEra :: ValidityUpperBoundSupportedInEra ShelleyEra
      ValidityUpperBoundInAllegraEra :: ValidityUpperBoundSupportedInEra AllegraEra
      ValidityUpperBoundInMaryEra    :: ValidityUpperBoundSupportedInEra MaryEra
+     ValidityUpperBoundInPivoEra    :: ValidityUpperBoundSupportedInEra Cardano.Api.Eras.PivoEra
 
 deriving instance Eq   (ValidityUpperBoundSupportedInEra era)
 deriving instance Show (ValidityUpperBoundSupportedInEra era)
@@ -414,6 +432,7 @@ validityUpperBoundSupportedInEra ByronEra   = Nothing
 validityUpperBoundSupportedInEra ShelleyEra = Just ValidityUpperBoundInShelleyEra
 validityUpperBoundSupportedInEra AllegraEra = Just ValidityUpperBoundInAllegraEra
 validityUpperBoundSupportedInEra MaryEra    = Just ValidityUpperBoundInMaryEra
+validityUpperBoundSupportedInEra Cardano.Api.Eras.PivoEra = Just ValidityUpperBoundInPivoEra
 
 
 -- | A representation of whether the era supports transactions having /no/
@@ -431,6 +450,7 @@ data ValidityNoUpperBoundSupportedInEra era where
      ValidityNoUpperBoundInByronEra   :: ValidityNoUpperBoundSupportedInEra ByronEra
      ValidityNoUpperBoundInAllegraEra :: ValidityNoUpperBoundSupportedInEra AllegraEra
      ValidityNoUpperBoundInMaryEra    :: ValidityNoUpperBoundSupportedInEra MaryEra
+     ValidityNoUpperBoundInPivoEra    :: ValidityNoUpperBoundSupportedInEra Cardano.Api.Eras.PivoEra
 
 deriving instance Eq   (ValidityNoUpperBoundSupportedInEra era)
 deriving instance Show (ValidityNoUpperBoundSupportedInEra era)
@@ -441,6 +461,7 @@ validityNoUpperBoundSupportedInEra ByronEra   = Just ValidityNoUpperBoundInByron
 validityNoUpperBoundSupportedInEra ShelleyEra = Nothing
 validityNoUpperBoundSupportedInEra AllegraEra = Just ValidityNoUpperBoundInAllegraEra
 validityNoUpperBoundSupportedInEra MaryEra    = Just ValidityNoUpperBoundInMaryEra
+validityNoUpperBoundSupportedInEra Cardano.Api.Eras.PivoEra = Just ValidityNoUpperBoundInPivoEra
 
 
 -- | A representation of whether the era supports transactions with a lower
@@ -454,6 +475,7 @@ data ValidityLowerBoundSupportedInEra era where
 
      ValidityLowerBoundInAllegraEra :: ValidityLowerBoundSupportedInEra AllegraEra
      ValidityLowerBoundInMaryEra    :: ValidityLowerBoundSupportedInEra MaryEra
+     ValidityLowerBoundInPivoEra    :: ValidityLowerBoundSupportedInEra Cardano.Api.Eras.PivoEra
 
 deriving instance Eq   (ValidityLowerBoundSupportedInEra era)
 deriving instance Show (ValidityLowerBoundSupportedInEra era)
@@ -464,6 +486,7 @@ validityLowerBoundSupportedInEra ByronEra   = Nothing
 validityLowerBoundSupportedInEra ShelleyEra = Nothing
 validityLowerBoundSupportedInEra AllegraEra = Just ValidityLowerBoundInAllegraEra
 validityLowerBoundSupportedInEra MaryEra    = Just ValidityLowerBoundInMaryEra
+validityLowerBoundSupportedInEra Cardano.Api.Eras.PivoEra = Just ValidityLowerBoundInPivoEra
 
 
 -- | A representation of whether the era supports transaction metadata.
@@ -485,6 +508,9 @@ txMetadataSupportedInEra ByronEra   = Nothing
 txMetadataSupportedInEra ShelleyEra = Just TxMetadataInShelleyEra
 txMetadataSupportedInEra AllegraEra = Just TxMetadataInAllegraEra
 txMetadataSupportedInEra MaryEra    = Just TxMetadataInMaryEra
+txMetadataSupportedInEra Cardano.Api.Eras.PivoEra = Nothing
+  -- todo: I'm hoping this is not needed. The amount of new *SupportedInEra* is
+  -- ridiculous.
 
 
 -- | A representation of whether the era supports auxiliary scripts in
@@ -506,6 +532,7 @@ auxScriptsSupportedInEra ByronEra   = Nothing
 auxScriptsSupportedInEra ShelleyEra = Nothing
 auxScriptsSupportedInEra AllegraEra = Just AuxScriptsInAllegraEra
 auxScriptsSupportedInEra MaryEra    = Just AuxScriptsInMaryEra
+auxScriptsSupportedInEra Cardano.Api.Eras.PivoEra = Nothing
 
 
 -- | A representation of whether the era supports withdrawals from reward
@@ -519,6 +546,7 @@ data WithdrawalsSupportedInEra era where
      WithdrawalsInShelleyEra :: WithdrawalsSupportedInEra ShelleyEra
      WithdrawalsInAllegraEra :: WithdrawalsSupportedInEra AllegraEra
      WithdrawalsInMaryEra    :: WithdrawalsSupportedInEra MaryEra
+     WithdrawalsInPivoEra    :: WithdrawalsSupportedInEra Cardano.Api.Eras.PivoEra
 
 deriving instance Eq   (WithdrawalsSupportedInEra era)
 deriving instance Show (WithdrawalsSupportedInEra era)
@@ -529,6 +557,7 @@ withdrawalsSupportedInEra ByronEra   = Nothing
 withdrawalsSupportedInEra ShelleyEra = Just WithdrawalsInShelleyEra
 withdrawalsSupportedInEra AllegraEra = Just WithdrawalsInAllegraEra
 withdrawalsSupportedInEra MaryEra    = Just WithdrawalsInMaryEra
+withdrawalsSupportedInEra Cardano.Api.Eras.PivoEra = Just WithdrawalsInPivoEra
 
 
 -- | A representation of whether the era supports 'Certificate's embedded in
@@ -551,6 +580,7 @@ certificatesSupportedInEra ByronEra   = Nothing
 certificatesSupportedInEra ShelleyEra = Just CertificatesInShelleyEra
 certificatesSupportedInEra AllegraEra = Just CertificatesInAllegraEra
 certificatesSupportedInEra MaryEra    = Just CertificatesInMaryEra
+certificatesSupportedInEra Cardano.Api.Eras.PivoEra = Nothing
 
 
 -- | A representation of whether the era supports 'UpdateProposal's embedded in
@@ -575,6 +605,7 @@ updateProposalSupportedInEra ByronEra   = Nothing
 updateProposalSupportedInEra ShelleyEra = Just UpdateProposalInShelleyEra
 updateProposalSupportedInEra AllegraEra = Just UpdateProposalInAllegraEra
 updateProposalSupportedInEra MaryEra    = Just UpdateProposalInMaryEra
+updateProposalSupportedInEra Cardano.Api.Eras.PivoEra = Nothing
 
 
 -- ----------------------------------------------------------------------------
@@ -789,10 +820,12 @@ instance Eq (TxBody era) where
            ShelleyBasedEraShelley -> txmetadataA == txmetadataB
            ShelleyBasedEraAllegra -> txmetadataA == txmetadataB
            ShelleyBasedEraMary    -> txmetadataA == txmetadataB
+           ShelleyBasedEraPivo    -> txmetadataA == txmetadataB
       && case era of
            ShelleyBasedEraShelley -> txbodyA == txbodyB
            ShelleyBasedEraAllegra -> txbodyA == txbodyB
            ShelleyBasedEraMary    -> txbodyA == txbodyB
+           ShelleyBasedEraPivo    -> txbodyA == txbodyB
 
     (==) ByronTxBody{} (ShelleyTxBody era _ _) = case era of {}
 
@@ -829,6 +862,14 @@ instance Show (TxBody era) where
         . showsPrec 11 txmetadata
         )
 
+    showsPrec p (ShelleyTxBody ShelleyBasedEraPivo txbody txmetadata) =
+      showParen (p >= 11)
+        ( showString "ShelleyTxBody ShelleyBasedEraPivo "
+        . showsPrec 11 txbody
+        . showChar ' '
+        . showsPrec 11 txmetadata
+        )
+
 instance HasTypeProxy era => HasTypeProxy (TxBody era) where
     data AsType (TxBody era) = AsTxBody (AsType era)
     proxyToAsType _ = AsTxBody (proxyToAsType (Proxy :: Proxy era))
@@ -853,6 +894,7 @@ instance IsCardanoEra era => SerialiseAsCBOR (TxBody era) where
         ShelleyBasedEraShelley -> serialiseShelleyBasedTxBody txbody txmetadata
         ShelleyBasedEraAllegra -> serialiseShelleyBasedTxBody txbody txmetadata
         ShelleyBasedEraMary    -> serialiseShelleyBasedTxBody txbody txmetadata
+        ShelleyBasedEraPivo    -> serialiseShelleyBasedTxBody txbody txmetadata
 
     deserialiseFromCBOR _ bs =
       case cardanoEra :: CardanoEra era of
@@ -870,6 +912,8 @@ instance IsCardanoEra era => SerialiseAsCBOR (TxBody era) where
                         (ShelleyTxBody ShelleyBasedEraAllegra) bs
         MaryEra    -> deserialiseShelleyBasedTxBody
                         (ShelleyTxBody ShelleyBasedEraMary) bs
+        Cardano.Api.Eras.PivoEra -> deserialiseShelleyBasedTxBody
+                        (ShelleyTxBody ShelleyBasedEraPivo) bs
 
 -- | The serialisation format for the different Shelley-based eras are not the
 -- same, but they can be handled generally with one overloaded implementation.
@@ -912,6 +956,7 @@ instance IsCardanoEra era => HasTextEnvelope (TxBody era) where
         ShelleyEra -> "TxUnsignedShelley"
         AllegraEra -> "TxBodyAllegra"
         MaryEra    -> "TxBodyMary"
+        Cardano.Api.Eras.PivoEra -> "TxBodyPivo"
 
 
 -- ----------------------------------------------------------------------------
@@ -988,6 +1033,15 @@ makeByronTransactionBody TxBodyContent { txIns, txOuts } = do
     classifyRangeError
       (TxOut (AddressInEra (ShelleyAddressInEra era) ShelleyAddress{})
              _) = case era of {}
+
+makePivoTransactionBody :: ShelleyBasedEra (PivoEra c)
+                        -> [TxIn]
+                        -> [TxOut (PivoEra c)]
+                        -> TxValidityUpperBound (PivoEra c)
+                        -> Maybe Lovelace
+                        -> Pivo.Update.Payload (PivoEra c)
+                        -> Either (TxBodyError (PivoEra c)) (TxBody (PivoEra c))
+makePivoTransactionBody = undefined
 
 makeShelleyTransactionBody :: ShelleyBasedEra era
                            -> TxBodyContent era
@@ -1192,6 +1246,8 @@ makeShelleyTransactionBody era@ShelleyBasedEraMary
         ss = case txAuxScripts of
                TxAuxScriptsNone   -> []
                TxAuxScripts _ ss' -> ss'
+makeShelleyTransactionBody ShelleyBasedEraPivo _txbody =
+  error "At the moment it is not possible to make a Pivo transaction using TxBodyContent since it does not contain Pivo update payload."
 
 
 toShelleyWithdrawal :: [(StakeAddress, Lovelace)] -> Shelley.Wdrl StandardCrypto

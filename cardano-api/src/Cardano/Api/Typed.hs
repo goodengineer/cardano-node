@@ -156,6 +156,7 @@ module Cardano.Api.Typed (
     -- ** Transitional utils
     makeByronTransaction,
     makeShelleyTransaction,
+    makePivoTransactionBody,
 
     -- ** Transaction Ids
     TxId(..),
